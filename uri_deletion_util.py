@@ -3,8 +3,10 @@ import base64
 import json
 import logging
 import os
+import sys
 import time
 from datetime import datetime
+from typing import Optional
 
 import requests
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -20,7 +22,6 @@ class ViyaClient():
     user_id: str
     password: str
     client_id_secret: str
-
     access_token: str
 
     def __get_access_token(self):
@@ -39,7 +40,7 @@ class ViyaClient():
         }
 
         request_body = f'grant_type=password&username={self.user_id}&password={self.password}'
-        
+
         response = requests.post(
             request_url,
             data=request_body,
@@ -55,15 +56,21 @@ class ViyaClient():
         if self.access_token is None:
             raise ViyaConnectError('Failed to retrieve access_token')
 
-    def __init__(self, hostname: str, user_id: str, password: str, client_id_secret: str):
+    def __init__(self, hostname: str,
+        user_id: Optional[str]=None, password: Optional[str]=None,
+        client_id_secret: Optional[str]=None,
+        access_token: Optional[str]=None
+    ):
         self.hostname = hostname
         self.user_id = user_id
         self.password = password
         self.client_id_secret = client_id_secret
+        self.access_token = access_token
 
-        self.__get_access_token()
+        if self.access_token is None:
+            self.__get_access_token()
         logging.info('Viya REST API client was initialized successfully')
-    
+
     def delete_object_by_uri(self, uri: str) -> str:
         '''Delete object by URI.'''
         logging.info('Deleting uri %s ...', uri)
@@ -98,19 +105,23 @@ def get_from_cli_args() -> argparse.Namespace:
     )
     parser.add_argument(
         '-u', '--user',
-        type=str, required=True,
+        type=str, required=False,
         help='Viya user name'
     )
     parser.add_argument(
         '-p', '--password',
-        type=str, required=True,
+        type=str, required=False,
         help='Viya user password'
     )
     parser.add_argument(
-        '-c', '--client_id_secret',
-        type=str, required=True,
+        '-c', '--client-id-secret',
+        type=str, required=False,
         help='Client ID and Client Secret in format <client_id>:<client_secret>'
     )
+    parser.add_argument(
+        '--access-token-auth', '-a',
+        action='store_true',
+        help='Provide this option if you have authentication token. It must be located in token.txt in the working directory.')
     parser.add_argument(
         '--really-delete',
         action='store_true',
@@ -126,6 +137,13 @@ def get_from_cli_args() -> argparse.Namespace:
     )
 
     args = parser.parse_args()
+
+    if not args.access_token_auth:
+        if args.user is None or args.password is None or args.client_id_secret is None:
+            print('ERROR: Wrong authentication information is provided.')
+            print('User, password, client are required if no access token is provided')
+            sys.exit(4)
+
     return args
 
 
@@ -177,13 +195,28 @@ def main():
 
     # ============================================================================
     # Initialize Viya client
+    if args.access_token_auth:
+        if not os.path.exists('token.txt'):
+            logging.error('token.txt was not found', exc_info=True)
+            print(f'\n{"="*50}\nERROR: token.txt was not found\n{"="*50}')
+            return
+
+        with open('token.txt', 'r', encoding='utf-8') as f:
+            access_token = f.read()
+
     try:
-        viya_client = ViyaClient(
-            hostname=args.hostname,
-            user_id=args.user,
-            password=args.password,
-            client_id_secret=args.client_id_secret,
-        )
+        if args.access_token_auth:
+            viya_client = ViyaClient(
+                hostname=args.hostname,
+                access_token=access_token
+            )
+        else:
+            viya_client = ViyaClient(
+                hostname=args.hostname,
+                user_id=args.user,
+                password=args.password,
+                client_id_secret=args.client_id_secret
+            )
     except Exception as e:
         logging.error('Viya client cannot be initialized', exc_info=True)
         print(f'\n{"="*50}\nError occured. Please check logs\n{"="*50}')
@@ -200,7 +233,7 @@ def main():
         else:
             status = viya_client.delete_object_by_uri(uri)
             print(f'{uri:<70}\t{status}')
-    
+
     print('\nDeletion is completed!')
     timings1 = time.time()
     print(f'Elapsed time: {round((timings1 - timings0)*1000, 3)} ms')

@@ -9,3 +9,5 @@
 working/*
 data/*
 logs/*
+
+token.txt
