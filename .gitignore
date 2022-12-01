@@ -1,0 +1,11 @@
+.devcontainer/*
+
+*.pyc
+*.pyo
+**/__pycache__/
+
+.coverage
+**/.pytest_cache/
+working/*
+data/*
+logs/*
