@@ -147,6 +147,39 @@ def get_from_cli_args() -> argparse.Namespace:
     return args
 
 
+def configure_logs() -> str:
+    curdir = os.path.dirname(os.path.abspath(__file__))
+    logdir = os.path.join(curdir, 'logs')
+    if not os.path.exists(logdir):
+        os.mkdir(logdir)
+    logfile = os.path.join(logdir, f'app_{datetime.now():%Y-%m-%d_%H-%M-%S}.log')
+    logging.basicConfig(
+        filename=logfile,
+        level=logging.DEBUG,
+        format='[%(asctime)s] [%(levelname)-8s] %(message)s')
+
+    return logfile
+
+def init_viya_client(hostname: str, access_token_auth: str, user: str, password: str, client_id_secret: str) -> ViyaClient:
+    if access_token_auth:
+        with open('token.txt', 'r', encoding='utf-8') as f:
+            access_token = f.read()
+
+        viya_client = ViyaClient(
+            hostname=hostname,
+            access_token=access_token
+        )
+    else:
+        viya_client = ViyaClient(
+            hostname=hostname,
+            user_id=user,
+            password=password,
+            client_id_secret=client_id_secret
+        )
+
+    return viya_client
+
+
 def main():
     '''Main function.'''
     timings0 = time.time()
@@ -156,16 +189,7 @@ def main():
     
     # ============================================================================
     # Configure logs
-    curdir = os.path.dirname(os.path.abspath(__file__))
-    logdir = os.path.join(curdir, 'logs')
-    if not os.path.exists(logdir):
-        os.mkdir(logdir)
-    logfile = os.path.join(logdir, f'app_{datetime.now():%Y-%m-%d_%H-%M-%S}.log')
-    logging.basicConfig(
-        filename=logfile,
-        level=logging.DEBUG,
-        format='[%(asctime)s] [%(levelname)-8s] %(message)s'
-    )
+    logfile = configure_logs()
 
     # ============================================================================
     logging.info('Hostname: %s', args.hostname)
@@ -195,28 +219,10 @@ def main():
 
     # ============================================================================
     # Initialize Viya client
-    if args.access_token_auth:
-        if not os.path.exists('token.txt'):
-            logging.error('token.txt was not found', exc_info=True)
-            print(f'\n{"="*50}\nERROR: token.txt was not found\n{"="*50}')
-            return
-
-        with open('token.txt', 'r', encoding='utf-8') as f:
-            access_token = f.read()
-
     try:
-        if args.access_token_auth:
-            viya_client = ViyaClient(
-                hostname=args.hostname,
-                access_token=access_token
-            )
-        else:
-            viya_client = ViyaClient(
-                hostname=args.hostname,
-                user_id=args.user,
-                password=args.password,
-                client_id_secret=args.client_id_secret
-            )
+        viya_client = init_viya_client(
+                hostname=args.hostname, access_token_auth=args.access_token_auth,
+                user=args.user, password=args.password, client_id_secret=args.client_id_secret)
     except Exception as e:
         logging.error('Viya client cannot be initialized', exc_info=True)
         print(f'\n{"="*50}\nError occured. Please check logs\n{"="*50}')
