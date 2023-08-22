@@ -100,6 +100,50 @@ How to use:
 
     Name of output file is printed in command output.
 
+## Utility for retrieval of dependent object URIs of decision
+
+This utility grabs the list of dependent objects of decision, which can be used further for creating export package.
+
+> Required Python 3.9+
+
+How to use:
+
+1. Navigate to directory where `get_dependent_objects.py` resides
+1. Run utility with necessary options provided
+
+    Here is the help:
+
+    ```text
+    usage: get_dependent_objects.py [-h] --hostname HOSTNAME [-u USER] [-p PASSWORD] [-c CLIENT_ID_SECRET] [--access-token-auth] --decision-uri DECISION_URI --major-version MAJOR_VERSION --minor-version MINOR_VERSION
+
+    Utility for getting dependent objects for decision using REST API
+
+    options:
+    -h, --help            show this help message and exit
+    --hostname HOSTNAME   Viya hostname in format http(s)://server-name.com
+    -u USER, --user USER  Viya user name
+    -p PASSWORD, --password PASSWORD
+                            Viya user password
+    -c CLIENT_ID_SECRET, --client-id-secret CLIENT_ID_SECRET
+                            Client ID and Client Secret in format <client_id>:<client_secret>
+    --access-token-auth, -a
+                            Provide this option if you have authentication token. It must be located in token.txt in the working directory.
+    --decision-uri DECISION_URI
+                            URI to decision
+    --major-version MAJOR_VERSION
+                            Major version
+    --minor-version MINOR_VERSION
+                            Minor version
+    ```
+
+    Example (with already retrieved token saved to `token.txt`):
+
+    ```bash
+    python3 get_dependent_objects.py --hostname https://sasserver.demo.sas.com -a --decision-uri /decisions/flows/26d9b2a8-a7be-4c9a-9af5-cd9e77cefcaf --major-version 1 --minor-version 0
+    ```
+
+    Name of output file is printed in command output.
+
 ## Logging
 
 Logs are written to work directory in `logs` subfolder.
