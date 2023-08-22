@@ -188,6 +188,14 @@ def init_viya_client(hostname: str, access_token_auth: str, user: str, password:
 
     return viya_client
 
+
+@dc.dataclass
+class Model():
+    uri: str
+    model_id: str
+    project_uri: str
+    project_folder_uri: str
+
 @dc.dataclass
 class RuleSet():
     uri: str
@@ -212,10 +220,12 @@ class Decision():
     revision_uri: str
     subdecisions: List['Decision'] = dc.field(init=False, default=None)
     nodes: List[str] = dc.field(init=False, default=None)
+    models: List[str] = dc.field(init=False, default=None)
 
     def __post_init__(self):
         self.subdecisions = []
         self.nodes = []
+        self.models = []
 
 @dc.dataclass
 class DecisionLineage():
@@ -229,6 +239,7 @@ class DecisionLineage():
     rulesets: dict = dc.field(init=False)
     treatment_groups: dict = dc.field(init=False)
     treatments: dict = dc.field(init=False)
+    models: dict = dc.field(init=False)
 
     class RevisionNotFound(Exception):
         '''Revision was not found.'''
@@ -238,6 +249,7 @@ class DecisionLineage():
         self.rulesets = {}
         self.treatment_groups = {}
         self.treatments = {}
+        self.models = {}
 
     def remove_revision(self, uri: str) -> str:
         '''Remove revision part from URI.'''
@@ -312,7 +324,8 @@ class DecisionLineage():
             elif step['type'] == 'application/vnd.sas.decision.step.node.link':
                 logging.warning('found link')
             elif step['type'] == 'application/vnd.sas.decision.step.model':
-                logging.warning('found model %s', step["model"]["name"])
+                logging.debug('found model %s', step["model"]["id"])
+                d.models.append(step["model"]["id"])
             else:
                 logging.warning('found unknown object %s', json.dumps(step))
 
@@ -403,6 +416,41 @@ class DecisionLineage():
             rs = RuleSet(self.remove_revision(rs_revision_uri), rs_revision_uri, lookups)
             self.rulesets[rs_revision_uri] = rs
 
+    def process_models(self) -> bool:
+        '''Process all models.'''
+
+        def get_decision_models(d: Decision) -> List[str]:
+            models = []
+            models.extend(d.models)
+            for subd in d.subdecisions:
+                models.extend(get_decision_models(subd))
+            return models
+
+        model_ids = set(get_decision_models(self.main_decision))
+
+        for model_id in model_ids:
+
+            model_uri = f'/modelRepository/models/{model_id}'
+            model_src_info = self.viya_client.get_any_json(model_uri)
+            project_uri = f'/modelRepository/projects/{model_src_info["projectId"]}'
+            project_folder_src = self.viya_client.get_any_json(
+                f'/folders/folders/@item?childUri={project_uri}'
+            )
+            project_folder_uri = next(
+                (link['uri'] for link in project_folder_src['links'] if link['rel'] == 'self'),
+                None
+            )
+
+            model = Model(
+                model_uri,
+                model_id,
+                project_uri,
+                project_folder_uri
+            )
+            self.models[model_id] = model
+
+        return True
+
     def fill_decision_lineage(self) -> bool:
         '''Extract all objects for decision from Viya.'''
         revision_id = self.get_revision_by_version(
@@ -416,6 +464,8 @@ class DecisionLineage():
         self.process_treatments()
 
         self.process_rulesets()
+
+        self.process_models()
 
         return True
 
@@ -436,6 +486,12 @@ class DecisionLineage():
             elif node_revision_uri.startswith('/businessRules'):
                 rs = self.rulesets[node_revision_uri]
                 dep_uris.extend(rs.lookups)
+        for model_id in d.models:
+            model: Model
+            model = self.models[model_id]
+            dep_uris.append(model.uri)
+            dep_uris.append(model.project_uri)
+            dep_uris.append(model.project_folder_uri)
         for subd in d.subdecisions:
             subd_dep_uris = self.__get_dependent_objects(subd)
             dep_uris.extend(subd_dep_uris)
@@ -452,8 +508,6 @@ class DecisionLineage():
         dependent_object_uris = self.__get_dependent_objects(self.decisions[revision_uri])
 
         return dependent_object_uris
-
-
 
 
 def main():
