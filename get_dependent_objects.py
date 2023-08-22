@@ -135,6 +135,11 @@ def get_from_cli_args() -> argparse.Namespace:
         type=int, required=True,
         help='Minor version'
     )
+    parser.add_argument(
+        '--viya-version',
+        type=str, required=True,
+        help='Viya version. Accepts "3.5" or "4" only'
+    )
 
     args = parser.parse_args()
 
@@ -143,6 +148,10 @@ def get_from_cli_args() -> argparse.Namespace:
             print('ERROR: Wrong authentication information is provided.')
             print('User, password, client are required if no access token is provided')
             sys.exit(4)
+    
+    if args.viya_version not in ('3.5', '4'):
+        print('ERROR: --viya-version must be 3.5 or 4')
+        sys.exit(4)
 
     return args
 
@@ -233,6 +242,7 @@ class DecisionLineage():
     decision_uri: str
     major_version: int
     minor_version: int
+    viya_version: str
 
     main_decision: Decision = dc.field(init=False)
     decisions: dict = dc.field(init=False)
@@ -433,9 +443,19 @@ class DecisionLineage():
             model_uri = f'/modelRepository/models/{model_id}'
             model_src_info = self.viya_client.get_any_json(model_uri)
             project_uri = f'/modelRepository/projects/{model_src_info["projectId"]}'
-            project_folder_src = self.viya_client.get_any_json(
-                f'/folders/folders/@item?childUri={project_uri}'
-            )
+
+            if self.viya_version == '4':
+                project_folder_src = self.viya_client.get_any_json(
+                    f'/folders/folders/@item?childUri={project_uri}'
+                )
+            elif self.viya_version == '3.5':
+                project_folder_src = self.viya_client.get_any_json(
+                    f'/folders/ancestors/@item?childUri={project_uri}'
+                )
+            else:
+                logging.error('Unknown value for Viya version')
+                raise ValueError
+
             project_folder_uri = next(
                 (link['uri'] for link in project_folder_src['links'] if link['rel'] == 'self'),
                 None
@@ -545,7 +565,8 @@ def main():
         viya_client=viya_client,
         decision_uri=args.decision_uri,
         major_version=args.major_version,
-        minor_version=args.minor_version
+        minor_version=args.minor_version,
+        viya_version=args.viya_version
     )
     dl.fill_decision_lineage()
 
