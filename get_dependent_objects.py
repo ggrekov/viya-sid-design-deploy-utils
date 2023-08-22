@@ -450,7 +450,7 @@ class DecisionLineage():
                 )
             elif self.viya_version == '3.5':
                 project_folder_src = self.viya_client.get_any_json(
-                    f'/folders/ancestors/@item?childUri={project_uri}'
+                    f'/folders/ancestors?childUri={project_uri}'
                 )
             else:
                 logging.error('Unknown value for Viya version')
